@@ -28,6 +28,53 @@
 #include "./common/intersection.h"
 #include "./common/trackball.h"
 
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_opengl3.h>
+
+#include <chrono>
+
+struct CPUTimer {
+    std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
+    float elapsed_ms = 0.0f;
+
+    void start() {
+        start_time = std::chrono::high_resolution_clock::now();
+    }
+
+    void stop() {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        elapsed_ms = std::chrono::duration<float, std::milli>(end_time - start_time).count();
+    }
+};
+
+struct GPUTimer {
+    unsigned int queryID;
+    float elapsed_ms = 0.0f;
+
+    void init() {
+        glGenQueries(1, &queryID);
+    }
+
+    void start() {
+        // Diciamo a OpenGL di iniziare a contare il tempo
+        glBeginQuery(GL_TIME_ELAPSED, queryID);
+    }
+
+    void stop() {
+        // Diciamo a OpenGL di smettere di contare
+        glEndQuery(GL_TIME_ELAPSED);
+    }
+
+    void update_results() {
+        GLuint64 elapsed_ns;
+        // Recuperiamo il risultato in nanosecondi
+        glGetQueryObjectui64v(queryID, GL_QUERY_RESULT, &elapsed_ns);
+        // Convertiamo in millisecondi per comodità di lettura
+        elapsed_ms = static_cast<float>(elapsed_ns) / 1000000.0f;
+    }
+};
+
 trackball tb[2];
 int curr_tb;
 
@@ -176,6 +223,13 @@ int main(int argc, char** argv)
     glEnable(GL_MULTISAMPLE);
     printout_opengl_glsl_info();
 
+    /* initialize IMGUI */
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init();
+    /* end IMGUI initialization */
+
     renderable fram = shape_maker::frame();
     renderable r_cube = shape_maker::cube();
     renderable r_track; r_track.create(); game_to_renderable::to_track(r, r_track);
@@ -193,7 +247,7 @@ int main(int argc, char** argv)
     
     // --- Caricamento texture tileabile per l'erba ---
     int tex_width, tex_height, tex_channels;
-    unsigned char* tex_data = stbi_load("./grass_tile.PNG", &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
+    unsigned char* tex_data = stbi_load("./grass_tile2.PNG", &tex_width, &tex_height, &tex_channels, STBI_rgb_alpha);
     if (!tex_data) {
         std::cerr << "Errore nel caricamento della texture!" << std::endl;
         return -1;
@@ -215,7 +269,7 @@ int main(int argc, char** argv)
 
     // --- Caricamento texture della  pista ---
     int road_width, road_height, road_channels;
-    unsigned char* road_data = stbi_load("./street_tile.PNG", &road_width, &road_height, &road_channels, STBI_rgb_alpha);
+    unsigned char* road_data = stbi_load("./street_tile2.PNG", &road_width, &road_height, &road_channels, STBI_rgb_alpha);
     if (!road_data) {
         std::cerr << "Errore nel caricamento della texture della pista!" << std::endl;
         return -1;
@@ -233,7 +287,7 @@ int main(int argc, char** argv)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     stbi_image_free(road_data);
-
+    
 
     glViewport(0, 0, 800, 800);
 
@@ -250,7 +304,16 @@ int main(int argc, char** argv)
     matrix_stack stack;
     glEnable(GL_DEPTH_TEST);
 
+    // inizializzazione per misura delle risorse
+    CPUTimer cpu_timer;
+    GPUTimer gpu_timer;
+    gpu_timer.init();
+	
     while (!glfwWindowShouldClose(window)) {
+		// partenza timer CPU e GPU
+        cpu_timer.start();
+        gpu_timer.start();
+
         view = camera.get_view_matrix();
         glUniformMatrix4fv(basic_shader["uView"], 1, GL_FALSE, &view[0][0]);
 
@@ -263,8 +326,6 @@ int main(int argc, char** argv)
         stack.mult(tb[0].matrix());
         glUniformMatrix4fv(basic_shader["uModel"], 1, GL_FALSE, &stack.m()[0][0]);
         
-
-
         glColor3f(0, 0, 1);
         glBegin(GL_LINES);
         glVertex3f(0, 0, 0);
@@ -284,8 +345,7 @@ int main(int argc, char** argv)
         glBindTexture(GL_TEXTURE_2D, tex_id);
         glUniform1i(basic_shader["uTex"], 0); // texture unit 0
 
-        
-
+       
 
         r_terrain.bind();
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -309,7 +369,8 @@ int main(int argc, char** argv)
 
         r_track.bind();
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glDrawElements(GL_TRIANGLES, r_track().count, GL_UNSIGNED_INT, 0);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, r_track.vn);
+        //glDrawElements(GL_TRIANGLES, r_track().count, GL_UNSIGNED_INT, 0);
 
         glDisable(GL_POLYGON_OFFSET_FILL); //fine ossfet
 
@@ -354,6 +415,30 @@ int main(int argc, char** argv)
         r_lamps.bind();
         glUniform3f(basic_shader["uColor"], 1.f, 1.0f, 0.f);
         glDrawArrays(GL_LINES, 0, r_lamps.vn);
+
+        gpu_timer.stop();
+        cpu_timer.stop();
+
+        // Aggiorna il risultato della GPU
+        gpu_timer.update_results();
+
+        /* draw the Graphical User Interface */
+        ImGui_ImplGlfw_NewFrame();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui::NewFrame();
+
+		ImGui::Begin("Risorse");
+        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "FPS: %.1f", ImGui::GetIO().Framerate);
+        ImGui::Separator();
+
+        ImGui::Text("CPU Time: %.3f ms", cpu_timer.elapsed_ms);
+        ImGui::Text("GPU Time: %.3f ms", gpu_timer.elapsed_ms);
+
+		ImGui::End();
+      
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        /* end of graphical user interface */
 
         stack.pop();
         glfwSwapBuffers(window);
