@@ -265,12 +265,48 @@ public:
 	 * update the carousel. Call this at the beginning of any render cycle
 	 * */
 	void update() {
-		int cs = clock() - clock_start;
-		for (size_t i = 0; i < _cars.size();++i) {
-			int ii = ((int)((cs) / float(CLOCKS_PER_SEC) * 30.f)+ _cars[i].delta_i) % carpaths[_cars[i].id_path].frames.size();
-			//std::cout << ii << std::endl;
-			_cars[i].frame = carpaths[_cars[i].id_path].frames[ii];
-		}
+	int cs = clock() - clock_start;
+    for (size_t i = 0; i < _cars.size(); ++i) {
+        // 1. Ottieni il frame base dal percorso
+        int ii = ((int)((cs) / float(CLOCKS_PER_SEC) * 30.f)+ _cars[i].delta_i) % carpaths[_cars[i].id_path].frames.size();
+        glm::mat4 base_frame = carpaths[_cars[i].id_path].frames[ii];
+
+        // 2. Estrai la posizione corrente e la direzione "avanti"
+        glm::vec3 pos = glm::vec3(base_frame[3]);
+        
+        // Nelle tue specifiche: "the car front is on -z halfspace". 
+        // Quindi la direzione frontale è l'inverso dell'asse Z locale.
+        glm::vec3 front = -glm::normalize(glm::vec3(base_frame[2])); 
+
+        // 3. Allinea l'altezza (Y) al terreno in quel punto
+        pos.y = _ter.y(pos.x, pos.z);
+
+        // 4. Calcola la Normale della superficie usando le differenze finite (pendenza)
+        float eps = 0.5f; // Raggio di campionamento (mezzo metro circa)
+        float hL = _ter.y(pos.x - eps, pos.z); // Altezza a sinistra
+        float hR = _ter.y(pos.x + eps, pos.z); // Altezza a destra
+        float hD = _ter.y(pos.x, pos.z - eps); // Altezza dietro
+        float hU = _ter.y(pos.x, pos.z + eps); // Altezza avanti
+
+        // Vettore normale calcolato dalle pendenze
+        glm::vec3 normal = glm::normalize(glm::vec3(hL - hR, 2.0f * eps, hD - hU));
+
+        // 5. Costruisci il nuovo sistema di riferimento ortonormale (Gram-Schmidt)
+        // Destra = Frontale x Normale
+        glm::vec3 right = glm::normalize(glm::cross(front, normal));
+        // Ricalcola il vero Frontale per assicurarti che sia a 90 gradi con la Normale
+        glm::vec3 real_front = glm::normalize(glm::cross(normal, right));
+
+        // 6. Crea la nuova matrice di trasformazione
+        glm::mat4 aligned_frame = glm::mat4(1.0f);
+        aligned_frame[0] = glm::vec4(right, 0.0f);          // Asse X locale
+        aligned_frame[1] = glm::vec4(normal, 0.0f);         // Asse Y locale (punta verso l'alto rispetto all'asfalto)
+        aligned_frame[2] = glm::vec4(-real_front, 0.0f);    // Asse Z locale (front è -Z)
+        aligned_frame[3] = glm::vec4(pos, 1.0f);            // Posizione aggiornata
+
+        // Assegna il frame corretto all'auto
+        _cars[i].frame = aligned_frame;
+    }
 		int day_ms = 3600000 * 24;
 		 
 		int daytime = (  this->sim_time + cs * sim_time_ratio) % (day_ms);

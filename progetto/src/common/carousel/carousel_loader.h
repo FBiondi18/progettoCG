@@ -1,6 +1,7 @@
 #pragma once
 #include "carousel.h"
 #include "..\path.h"
+#include <stb_image.h>
 
 struct carousel_loader {
 	carousel_loader() {}
@@ -17,6 +18,7 @@ struct carousel_loader {
 	static void push_cameraman(NSVGpath* npath, float rd, std::vector<cameraman>& vc) {
 		cameraman  so(rd);
 		so.frame = glm::mat4(1.f);
+		/*float height_offset = 1.5f;*/
 		so.frame[3] = glm::vec4(npath->pts[0], r()->ter().y(npath->pts[0], npath->pts[1]), npath->pts[1], 1.0);
 		vc.push_back(so);
 	}

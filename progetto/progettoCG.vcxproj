@@ -31,6 +31,10 @@
   <ItemGroup>
     <None Include="src\shaders\basic.frag" />
     <None Include="src\shaders\basic.vert" />
+    <None Include="src\shaders\light.frag" />
+    <None Include="src\shaders\light.vert" />
+    <None Include="src\shaders\texture.frag" />
+    <None Include="src\shaders\texture.vert" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="src\assets\grass_tile.png" />

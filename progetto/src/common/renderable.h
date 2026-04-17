@@ -10,12 +10,14 @@ struct material {
 	double alpha_cutoff;
 	double base_color_factor[4];
 	GLint base_color_texture; 
-	GLint roughness_texture;
+	GLint metallic_roughness_texture;
 	double metallic_factor;
 	double roughness_factor;
 	GLint normal_texture;
 	GLint emissive_texture;
+	double emissive_factor[3];
 	GLint occlusion_texture;
+	double occlusion_strength;
 };
 
 
