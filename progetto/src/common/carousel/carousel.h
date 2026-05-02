@@ -279,17 +279,29 @@ public:
         glm::vec3 front = -glm::normalize(glm::vec3(base_frame[2])); 
 
         // 3. Allinea l'altezza (Y) al terreno in quel punto
-        pos.y = _ter.y(pos.x, pos.z);
+		float half_height = (_cars[i].box.max.y - _cars[i].box.min.y) * 0.5f;
+        pos.y = _ter.y(pos.x, pos.z) + half_height;
 
-        // 4. Calcola la Normale della superficie usando le differenze finite (pendenza)
-        float eps = 0.5f; // Raggio di campionamento (mezzo metro circa)
-        float hL = _ter.y(pos.x - eps, pos.z); // Altezza a sinistra
-        float hR = _ter.y(pos.x + eps, pos.z); // Altezza a destra
-        float hD = _ter.y(pos.x, pos.z - eps); // Altezza dietro
-        float hU = _ter.y(pos.x, pos.z + eps); // Altezza avanti
+		// 4. Calcola la Normale della superficie calcolando i vettori tangenti
+		float eps = 0.5f;
 
-        // Vettore normale calcolato dalle pendenze
-        glm::vec3 normal = glm::normalize(glm::vec3(hL - hR, 2.0f * eps, hD - hU));
+		// Punto leggermente a destra
+		glm::vec3 pR(pos.x + eps, _ter.y(pos.x + eps, pos.z), pos.z);
+		// Punto leggermente a sinistra
+		glm::vec3 pL(pos.x - eps, _ter.y(pos.x - eps, pos.z), pos.z);
+
+		// Punto leggermente avanti (-Z è avanti in OpenGL e nel tuo sistema)
+		glm::vec3 pF(pos.x, _ter.y(pos.x, pos.z - eps), pos.z - eps);
+		// Punto leggermente indietro
+		glm::vec3 pB(pos.x, _ter.y(pos.x, pos.z + eps), pos.z + eps);
+
+		// Calcoliamo i vettori tangenti (Destra e Avanti)
+		glm::vec3 vecRight = glm::normalize(pR - pL);
+		glm::vec3 vecForward = glm::normalize(pF - pB);
+
+		// La normale al terreno è il prodotto vettoriale tra destra e avanti!
+		// Visto che Forward va verso -Z e Right verso +X, N = Cross(Right, Forward)
+		glm::vec3 normal = glm::normalize(glm::cross(vecRight, vecForward));
 
         // 5. Costruisci il nuovo sistema di riferimento ortonormale (Gram-Schmidt)
         // Destra = Frontale x Normale

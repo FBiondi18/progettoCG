@@ -9,27 +9,25 @@ out vec3 vColor;
 out vec2 vTex;
 out vec3 vNormal;
 out vec3 vFragPos;
-out mat3 TBN;
+out vec4 vFragPosLight;
 
-uniform mat4 uProj;
-uniform mat4 uView;
+layout (std140, binding = 0) uniform Matrices
+{
+	mat4 uProj;
+	mat4 uView;
+	mat4 uLightSpace;
+};
+
+
 uniform mat4 uModel;
 
 
 void main(void) 
 { 
-
 	vNormal = mat3(transpose(inverse(uModel))) * aNormal;
-	//vColor = aColor;
 	vTex = aTex;
 	vFragPos = vec3(uModel * vec4(aPosition, 1.0));
-
-	mat3 normalMatrix = mat3(uModel);
-    vec3 T = normalize(normalMatrix * aTangent.xyz);
-    vec3 N = normalize(vNormal);
-	T = normalize(T - dot(T, N) * N);
-	vec3 B = cross(N, T) * aTangent.w;
-	TBN = mat3(T, B, N);
-
+	vFragPosLight = uLightSpace * vec4(vFragPos, 1.0);
     gl_Position = uProj*uView*uModel*vec4(aPosition, 1.0); 
+
 }

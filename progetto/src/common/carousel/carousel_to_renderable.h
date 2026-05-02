@@ -82,12 +82,12 @@ struct game_to_renderable {
 				GLuint idx4 = (2 * (i + 1)) + 1;
 
 				buffer_idx.push_back(idx1);
-				buffer_idx.push_back(idx2);
 				buffer_idx.push_back(idx3);
+				buffer_idx.push_back(idx2);
 
 				buffer_idx.push_back(idx3);
-				buffer_idx.push_back(idx2);
 				buffer_idx.push_back(idx4);
+				buffer_idx.push_back(idx2);
 			}
 		}
 
