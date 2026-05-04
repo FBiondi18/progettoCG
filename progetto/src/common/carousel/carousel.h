@@ -279,8 +279,7 @@ public:
         glm::vec3 front = -glm::normalize(glm::vec3(base_frame[2])); 
 
         // 3. Allinea l'altezza (Y) al terreno in quel punto
-		float half_height = (_cars[i].box.max.y - _cars[i].box.min.y) * 0.5f;
-        pos.y = _ter.y(pos.x, pos.z) + half_height;
+		pos.y = _ter.y(pos.x, pos.z);
 
 		// 4. Calcola la Normale della superficie calcolando i vettori tangenti
 		float eps = 0.5f;

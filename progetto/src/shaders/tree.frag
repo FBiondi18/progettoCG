@@ -6,6 +6,7 @@ in vec3 vColor;
 in vec3 vNormal;
 in vec3 vFragPos;
 in vec4 vFragPosLight;
+in vec4 vFragCarPosLight[10];
 
 struct material_model {
     vec4  uColor;
@@ -25,6 +26,7 @@ uniform int indice;
 uniform sampler2D uTex;
 uniform sampler2D uNormalTex;
 uniform sampler2D uShadowMap;
+uniform sampler2DArray uCarShadowMap;
 
 struct light {
     vec3 position;   
@@ -42,6 +44,7 @@ layout (std140, binding = 2) uniform Light{
     vec3 uSunDir;
     vec3 uSunColor;
     vec3 uViewPos;
+    float uExposure;
 };
 
 const float PI = 3.14159265359;
@@ -53,11 +56,15 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness);
 vec3 fresnelSchlick(float cosTheta, vec3 F0);
 vec3 CalculatePBR(vec3 L, vec3 V, vec3 N, vec3 F0, vec3 albedo, float metallic, float roughness, vec3 radiance);
 float ShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L);
+float CarShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L, int carIndex);
 
 void main(void) 
 {
-    float linear = 100.f;
-    float quadratic = 150.f;
+    float carLinear = 100.f;
+    float carQuadratic = 150.f;
+
+    float linear = 150.f;
+    float quadratic = 300.f;
     
     vec4 texColor = texture(uTex, vTex);
     vec4 baseColor = texColor * models[indice].uColor;
@@ -79,11 +86,20 @@ void main(void)
     F0 = mix(F0, albedo, metallic);
 
     vec3 Lout = vec3(0.0);
-    
+
     // 1. Luce del Sole (Direzionale)
     vec3 light = normalize(uSunDir);
     vec3 sunLight = CalculatePBR(light, V, N, F0, albedo, metallic, roughness, uSunColor);
-    Lout += sunLight * (1.0 - ShadowCalculation(vFragPosLight, N, light));
+
+    float sunAngleY = normalize(uSunDir).y; 
+
+    float shadowFade = smoothstep(0.0, 0.17, sunAngleY);
+
+    float shadow = ShadowCalculation(vFragPosLight, N, light);
+
+    shadow *= shadowFade;
+
+    Lout += sunLight * (1.0 - shadow);
     
     // 3. Lampioni (spotlight con attenuazione quadratica custom)
     for (int i = 0; i < 20; ++i) {
@@ -107,7 +123,7 @@ void main(void)
         }
     }
 
-    // 2. Luci delle Auto (Faretti)
+    // 3. Luci delle Auto (Faretti)
     for (int i = 0; i < 20; ++i) {
         vec3 lightVec = uCarLights[i].position - vFragPos;
         float distance = length(lightVec);
@@ -121,9 +137,15 @@ void main(void)
 
         if (spotIntensity > 0.0) {
             float d2 = distance * distance;
-            float attenuation = 1.0 / (1.0 + linear * distance + quadratic * d2);
-            //float attenuation = 1.0 / (1.0 + 0.14 * distance + 0.07 * d2); // Attenuazione più forte per luci auto
-            vec3 radiance = uCarLights[i].color * uCarLights[i].intensity * attenuation * spotIntensity;
+            float attenuation = 1.0 / (1.0 + carLinear * distance + carQuadratic * d2);
+
+            int carIndex = i/2;
+
+            float shadowFactor = CarShadowCalculation(vFragCarPosLight[carIndex], N, L, carIndex);
+
+            float visibility = 1.0 - shadowFactor;
+
+            vec3 radiance = uCarLights[i].color * uCarLights[i].intensity * attenuation * spotIntensity * visibility;
             Lout += CalculatePBR(L, V, N, F0, albedo, metallic, roughness, radiance);
         }
     }
@@ -133,7 +155,7 @@ void main(void)
 
     // HDR Tonemapping
     float exposure = 1.0;
-    color = vec3(1.0) - exp(-color * exposure);
+    color = vec3(1.0) - exp(-color * uExposure);
     
     // Gamma Correction
     color = pow(color, vec3(1.0/2.2)); 
@@ -238,6 +260,35 @@ float ShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L)
         for(int y = -1; y <= 1; ++y)
         {
             float pcfDepth = texture(uShadowMap, projCoords.xy + vec2(x, y) * texelSize).r; 
+            shadow += currentDepth - bias > pcfDepth  ? 1.0 : 0.0;        
+        }    
+    }
+    shadow /= 9.0;
+
+    return shadow;
+}
+float CarShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L, int carIndex)
+{
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    
+    if(projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
+        return 0.0;
+
+    float currentDepth = projCoords.z;
+    float bias = max(0.005 * (1.0 - dot(N, L)), 0.001); 
+    
+    float shadow = 0.0;
+    
+    vec2 texelSize = 1.0 / textureSize(uCarShadowMap, 0).xy; 
+    
+    for(int x = -1; x <= 1; ++x)
+    {
+        for(int y = -1; y <= 1; ++y)
+        {
+            vec3 uvCoords = vec3(projCoords.xy + vec2(x, y) * texelSize, float(carIndex));
+            
+            float pcfDepth = texture(uCarShadowMap, uvCoords).r; 
             shadow += currentDepth - bias > pcfDepth  ? 1.0 : 0.0;        
         }    
     }

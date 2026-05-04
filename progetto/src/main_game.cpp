@@ -152,7 +152,7 @@ struct Camera {
             glm::mat4 frame = c.frame;
             frame = glm::translate(frame, glm::vec3(0.0f, 2.f, 3.f));
             frame = glm::translate(glm::mat4(1), -center) * frame;
-            frame[3] = glm::scale(glm::mat4(1), glm::vec3(s)) * frame[3] + glm::vec4(0, 0.005, 0, 0);
+            frame[3] = glm::scale(glm::mat4(1), glm::vec3(3 *s)) * frame[3] + glm::vec4(0, 0.005, 0, 0);
             return glm::inverse(frame);
 		}
         return glm::lookAt(position, position + front, up);
@@ -166,9 +166,21 @@ struct Camera {
 
             float pov_fov = 60.f;
 
-			return glm::perspective(glm::radians(pov_fov), aspect_ratio, 0.01f, 10.0f);
+			return glm::perspective(glm::radians(pov_fov), aspect_ratio, 0.0001f, 1.0f);
         }
-        return glm::perspective(glm::radians(Zoom), aspect_ratio, 0.1f, 50.0f);
+
+        // distanza fisica tra la telecamera e il centro
+        float distance_to_center = glm::length(position - glm::vec3(0.0f, 0.0f, 0.0f));
+
+        float world_radius = 5.0f;
+
+        // Distanza attuale + grandezza della mappa + un po' di margine (es. 2.0f)
+        float dynamic_far = distance_to_center + world_radius + 2.0f;
+
+        dynamic_far = std::max(dynamic_far, 5.0f);
+
+
+        return glm::perspective(glm::radians(Zoom), aspect_ratio, 0.01f, dynamic_far);
     }
 
     void ProcessMouseScroll(float yoffset)
@@ -223,22 +235,6 @@ struct uniform_light {
 };
 
 
-struct light_uniform_locations {
-    GLint position;
-    GLint direction;
-    GLint color;
-    GLint intensity;
-    GLint cutOff;
-	GLint outerCutOff;
-};
-
-
-struct lamp_light_uniform_locations {
-    GLint position;
-    GLint color;
-    GLint intensity;
-};
-
 // --- GLFW Callbacks ---
 static void cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
@@ -251,9 +247,9 @@ void initDummyTextures(GLuint& dummyWhiteTex, GLuint& dummyBlackTex, GLuint& dum
 void send_pbr_texture(shader& shader);
 
 // --- Lighting & Environment ---
-glm::vec3 get_sun_color(const glm::vec3& sun_dir);
+glm::vec3 get_sun_light(const glm::vec3& sun_dir, float& out_exposure);
 void init_car_lights(uniform_light car_lights[], box3 car_bbox);
-void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car_bbox);
+void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car_bbox, glm::mat4& carLightProjection, glm::mat4 carLightSpace[]);
 void init_lamp_lights(uniform_light lamp_lights[], box3 lamp_bbox);
 void update_lamp_lights(matrix_stack& stack, uniform_light lamp_lights[], box3 lamp_bbox);
 
@@ -373,12 +369,14 @@ int main(int argc, char** argv)
 	glUniform1i(tree_shader["uTex"], 0);
 	glUniform1i(tree_shader["uNormalTex"], 2);
     glUniform1i(tree_shader["uShadowMap"], 5);
+	glUniform1i(tree_shader["uCarShadowMap"], 6);
 
     shader terrain_shader;
 	terrain_shader.create_program("shaders/light.vert", "shaders/terrain.frag");
 	glUseProgram(terrain_shader.program);
     glUniform1i(terrain_shader["uTex"], 0);
 	glUniform1i(terrain_shader["uShadowMap"], 5);
+    glUniform1i(terrain_shader["uCarShadowMap"], 6);
 
     shader model_shader;
     model_shader.create_program("shaders/light.vert", "shaders/model.frag");
@@ -398,14 +396,14 @@ int main(int argc, char** argv)
 	texture skybox_texture;
 	skybox_texture.load_cubemap( path + "_Right.bmp", path + "_Left.bmp", path + "_Top.bmp", path + "_Bottom.bmp", path + "_Front.bmp", path + "_Back.bmp" , 0);
 
-    glViewport(0, 0, 800, 800);
+    glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
 
     tb[0].reset();
     tb[0].set_center_radius(glm::vec3(0, 0, 0), 1.f);
     curr_tb = 0;
 
 
-    proj = glm::perspective(glm::radians(45.f), 1.f, 0.1f, 50.f); //modificato
+    proj = glm::perspective(glm::radians(45.f), 1.f, 0.01f, 5.0f); //modificato
 	glUseProgram(model_shader.program);
 	current_program = model_shader;
     send_pbr_texture(model_shader);
@@ -450,6 +448,17 @@ int main(int argc, char** argv)
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 
 
+    unsigned int carDepthMap;
+    glGenTextures(1, &carDepthMap);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, carDepthMap);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F,
+        SHADOW_WIDTH/4, SHADOW_HEIGHT/4, 10, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
+
     // frame buffer per depth map
     unsigned int depthMapFBO;
     glGenFramebuffers(1, &depthMapFBO);
@@ -466,11 +475,22 @@ int main(int argc, char** argv)
     unsigned int ubo;
     glGenBuffers(1, &ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 3, nullptr, GL_STATIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 13, nullptr, GL_STATIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &proj[0][0]);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+	// frameBuffer per depth map da punto di vista delle auto 
+    unsigned int carDepthMapFBO;
+    glGenFramebuffers(1, &carDepthMapFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, carDepthMapFBO);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	glm::mat4 carLightView[10];
+	glm::mat4 carLightProjection = glm::perspective(glm::radians(45.0f), 1.0f, 0.01f, 20.0f);
+	glm::mat4 carLightSpaceMatrix[10];
 
     r.start(11, 0, 0, 600);
     r.update();
@@ -484,6 +504,9 @@ int main(int argc, char** argv)
     CPUTimer cpu_timer;
     GPUTimer gpu_timer;
     gpu_timer.init();
+
+    float exposure = 0.0f;
+
     while (!glfwWindowShouldClose(window)) {
 
         int offset = 0;
@@ -493,7 +516,7 @@ int main(int argc, char** argv)
 
         glm::vec3 lightDir = glm::vec3(r.sunlight_direction().x, r.sunlight_direction().y, r.sunlight_direction().z);
 		light_info[0] = glm::vec4(lightDir, 0.0);
-		glm::vec3 sun_color = get_sun_color(lightDir);
+		glm::vec3 sun_color = get_sun_light(lightDir, exposure);
 		light_info[1] = glm::vec4(sun_color, 1.0f);
         view = camera.get_view_matrix(stack);
 		glm::vec3 viewPos = camera.get_position();
@@ -502,13 +525,15 @@ int main(int argc, char** argv)
         // aggiorna le informazioni sulla luce del sole, e la viewPos
         glBindBuffer(GL_UNIFORM_BUFFER, light_ubo);
         glBufferSubData(GL_UNIFORM_BUFFER, 40 * sizeof(uniform_light), sizeof(light_info), &light_info[0]);
+		// light_info è un array di 3 componenti vec4, mentre negli shader le 3 componenti sono vec3 + 1 float, quindi exposure si trova a 4 byte dalla fine
+        glBufferSubData(GL_UNIFORM_BUFFER, 40 * sizeof(uniform_light) + sizeof(light_info) - 4, sizeof(float), &exposure);
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
         proj = camera.get_projection_matrix(SRC_WIDTH, SRC_HEIGHT);
 
         float tb_scale = glm::length(glm::vec3(tb[0].matrix()[0]));
         float scene_radius = 0.5f * tb_scale;
-        float margin = scene_radius * 1.2f;
+        float margin = 3 * scene_radius * 1.2f;
 
         glm::vec3 sun_pos = lightDir * (margin * 2.0f);
         lightView = glm::lookAt(sun_pos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -521,7 +546,7 @@ int main(int argc, char** argv)
 
         lightSpaceMatrix = lightProjection * lightView;
 
-        // Aggiorna la matrice di vista e la matrice lightSpace
+        // Aggiorna la matrice di vista e la matrice di proiezione lightSpace
         glBindBuffer(GL_UNIFORM_BUFFER, ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &proj[0][0]);
         glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), &view[0][0]);
@@ -538,7 +563,7 @@ int main(int argc, char** argv)
 
         float s = 1.f / r.bbox().diagonal();
         glm::vec3 c = r.bbox().center();
-        stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(s)));
+        stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(3 * s)));
         stack.mult(glm::translate(glm::mat4(1.f), -c));
 
         check_gl_errors(__LINE__, __FILE__);
@@ -549,19 +574,40 @@ int main(int argc, char** argv)
 		// aggiorna le posizioni e direzioni dei fari delle auto
 		glBindBuffer(GL_UNIFORM_BUFFER, light_ubo);
 		update_lamp_lights(stack, &lights[0], lamp_bbox);
-		update_car_lights(stack, &lights[20], car_bbox);
+		update_car_lights(stack, &lights[20], car_bbox, carLightProjection, &carLightSpaceMatrix[0]);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, 40 * sizeof(uniform_light), &lights[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-		// Render pass per la shadow map
+		//pass per la shadow map delle auto
 		glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-        glClear(GL_DEPTH_BUFFER_BIT);
-		current_program = shadow_shader;
+		glBufferSubData(GL_UNIFORM_BUFFER, 3 * sizeof(glm::mat4), 10 * sizeof(glm::mat4), &carLightSpaceMatrix[0]);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, carDepthMapFBO);
+        glViewport(0, 0, SHADOW_WIDTH/4, SHADOW_HEIGHT/4);
+        current_program = shadow_shader;
         glUseProgram(current_program.program);
         glCullFace(GL_FRONT);
 
+        for (int ic = 0; ic < r.cars().size(); ++ic) {
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, carDepthMap, 0, ic);
+            glClear(GL_DEPTH_BUFFER_BIT);
+
+			glUniform1i(current_program["indice"], ic);
+
+            render_cars_shadows(stack, current_program, car_bbox, car_objects);
+            render_cameramen_shadows(stack, current_program, camera_bbox, camera_objects);
+            render_lamps_shadows(stack, current_program, lamp_bbox, lamp_objects);
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		//pass per la shadow map dal punto di vista del sole
+		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glCullFace(GL_FRONT);
+
+        glUniform1i(current_program["indice"], -1);
         render_cars_shadows(stack, current_program, car_bbox, car_objects);
         render_cameramen_shadows(stack, current_program, camera_bbox, camera_objects);
         render_lamps_shadows(stack, current_program, lamp_bbox, lamp_objects);
@@ -573,6 +619,9 @@ int main(int argc, char** argv)
 
         glActiveTexture(GL_TEXTURE5);
         glBindTexture(GL_TEXTURE_2D, depthMap);
+		glActiveTexture(GL_TEXTURE6);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, carDepthMap);
+
 		current_program = model_shader;
 		glUseProgram(current_program.program);
         glBindBuffer(GL_UNIFORM_BUFFER, ubo_material);
@@ -589,7 +638,7 @@ int main(int argc, char** argv)
 		render_lamps(stack, current_program, lamp_bbox, lamp_objects, material_idx, offset);
         offset += lamp_objects.size();
         glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(-2.f, -2.f);
+        glPolygonOffset(-3.f, -3.f);
         render_track(r_track, stack, current_program, road_texture.id, road_normal_tex.id, material_idx, offset);
 		glDisable(GL_POLYGON_OFFSET_FILL);
         offset += 1;
@@ -733,7 +782,7 @@ GLuint createDummyTexture(unsigned char r, unsigned char g, unsigned char b, uns
     return texID;
 }
 
-// Chiamala all'avvio dell'applicazione
+
 void initDummyTextures(GLuint& dummyWhiteTex, GLuint& dummyBlackTex, GLuint& dummyNormalTex) {
     dummyWhiteTex = createDummyTexture(255, 255, 255, 255);
     dummyBlackTex = createDummyTexture(0, 0, 0, 255);
@@ -741,34 +790,54 @@ void initDummyTextures(GLuint& dummyWhiteTex, GLuint& dummyBlackTex, GLuint& dum
 }
 
 // Funzione per calcolare il colore della luce in base alla direzione
-glm::vec3 get_sun_color(const glm::vec3& sun_dir) {
-    // Invertiamo la Y così l'elevazione è: 1.0 (Mezzogiorno), 0.0 (Orizzonte), -1.0 (Notte)
+glm::vec3 get_sun_light(const glm::vec3& sun_dir, float& out_exposure) {
+    // 1. ELEVAZIONE
     float elevation = sun_dir.y;
 
-    // Definisci la tua palette di colori (HDR, quindi possono superare 1.0)
-    glm::vec3 color_noon = glm::vec3(4.0f, 4.0f, 3.8f);   // Bianco leggermente caldo
-    glm::vec3 color_sunset = glm::vec3(4.0f, 1.5f, 0.2f);   // Arancio/Rosso intenso del tramonto
-    glm::vec3 color_night = glm::vec3(0.05f, 0.08f, 0.2f); // Luce lunare bluastra molto debole
+    // 2. COLORI BASE E INTENSITÀ HDR
+    glm::vec3 base_noon = glm::vec3(1.0f, 0.98f, 0.95f);
+    glm::vec3 base_sunset = glm::vec3(1.0f, 0.6f, 0.2f);
+    glm::vec3 base_night = glm::vec3(0.6f, 0.7f, 1.0f);
 
+    float int_noon = 25.0f;
+    float int_sunset = 5.0f;
+    float int_night = 0.2f;
+
+    glm::vec3 color_noon = base_noon * int_noon;
+    glm::vec3 color_sunset = base_sunset * int_sunset;
+    glm::vec3 color_night = base_night * int_night;
+
+    // 3. TARGET DI ESPOSIZIONE (Il trucco per l'auto-adattamento)
+    // Giorno: Chiudiamo il diaframma perché il sole a 25.0 brucerebbe tutto
+    float exp_noon = 0.3f;
+    // Tramonto: Luce fioca, apriamo un po' il diaframma
+    float exp_sunset = 1.0f;
+    // Notte: Apriamo al massimo per far risaltare la luna e soprattutto i FARI (20.0)
+    float exp_night = 2.5f;
+
+    // 4. LOGICA DI MISCELAZIONE
     if (elevation > 0.1f) {
-        // --- GIORNO (Da mezzogiorno a poco prima del tramonto) ---
-        // Ricalcoliamo il range [0.1, 1.0] su una scala [0.0, 1.0] per il mix
+        // --- GIORNO ---
         float t = (elevation - 0.1f) / 0.9f;
-        // smoothstep rende la transizione dei colori più morbida e naturale
         t = glm::smoothstep(0.0f, 1.0f, t);
+
+        // Sfumiamo dinamicamente l'esposizione
+        out_exposure = glm::mix(exp_sunset, exp_noon, t);
         return glm::mix(color_sunset, color_noon, t);
 
     }
     else if (elevation > -0.1f) {
-        // --- CREPUSCOLO (Il sole sta attraversando la linea dell'orizzonte) ---
-        // Range [-0.1, 0.1] mappato su [0.0, 1.0]
+        // --- CREPUSCOLO ---
         float t = (elevation + 0.1f) / 0.2f;
         t = glm::smoothstep(0.0f, 1.0f, t);
+
+        out_exposure = glm::mix(exp_night, exp_sunset, t);
         return glm::mix(color_night, color_sunset, t);
 
     }
     else {
         // --- NOTTE FONDA ---
+        out_exposure = exp_night;
         return color_night;
     }
 }
@@ -780,8 +849,10 @@ void render_terrain(renderable& r_terrain, matrix_stack& stack, shader& shader, 
     glBindTexture(GL_TEXTURE_2D, grass_texture_id);
 
     glDepthRange(0.01, 1);
-
+    stack.push();
+    stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(0.0f, -0.17f, 0.0f)));
     glUniformMatrix4fv(shader["uModel"], 1, GL_FALSE, &stack.m()[0][0]);
+    stack.pop();
     r_terrain.bind();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDrawElements(GL_TRIANGLES, r_terrain().count, GL_UNSIGNED_INT, 0);
@@ -1031,10 +1102,10 @@ void render_cameramen_shadows(matrix_stack& stack, shader& shader, box3 camera_b
 
 void render_cars(matrix_stack& stack, shader& shader, box3 car_bbox, std::vector<renderable>& car_objects, std::vector<int>& m_idx, int offset) {
 
+	terrain ter = r.ter();
     for (unsigned int ic = 0; ic < r.cars().size(); ++ic) {
         stack.push();
         stack.mult(r.cars()[ic].frame);
-        glm::vec3 car_pos = glm::vec3(r.cars()[ic].frame[3].x, r.cars()[ic].frame[3].y, r.cars()[ic].frame[3].z);
         float car_height = car_bbox.max.y - car_bbox.min.y;
         float scale = 1.f / car_bbox.diagonal();
 
@@ -1042,7 +1113,7 @@ void render_cars(matrix_stack& stack, shader& shader, box3 car_bbox, std::vector
 
         stack.mult(glm::rotate(glm::mat4(1.f), glm::radians(180.f), glm::vec3(0, 1, 0)));
 
-        stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(-car_bbox.center().x, -car_bbox.center().y - car_height * 0.1f, -car_bbox.center().z)));
+        stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(-car_bbox.center().x, -car_bbox.min.y, -car_bbox.center().z)));
 
         for (unsigned int j = 0; j < car_objects.size(); j++) {
             car_objects[j].bind();
@@ -1200,20 +1271,20 @@ void init_car_lights(uniform_light car_lights[], box3 car_bbox) {
 
         // faro sinistro anteriore
         car_lights[left_idx].color = color;
-        car_lights[left_idx].intensity = 10.0f;
+        car_lights[left_idx].intensity = 20.0f;
         car_lights[left_idx].cutOff = glm::cos(glm::radians(12.5f));
         car_lights[left_idx].outerCutOff = glm::cos(glm::radians(17.5f));
 
         //faro destro anteriore
         car_lights[right_idx].color = color;
-        car_lights[right_idx].intensity = 10.0f;
+        car_lights[right_idx].intensity = 20.0f;
         car_lights[right_idx].cutOff = glm::cos(glm::radians(12.5f));
         car_lights[right_idx].outerCutOff = glm::cos(glm::radians(17.5f));
     }
 }
 
 
-void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car_bbox) {
+void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car_bbox, glm::mat4& carLightProjection, glm::mat4 carLightSpace[]) {
 
     glm::vec4 forward_dir = glm::vec4(0.0f, -0.3f, 1.0f, 0.0f);
 
@@ -1227,10 +1298,13 @@ void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car
     glm::vec4 left_light_pos = glm::vec4(faro_x, faro_y, faro_z, 1.0f);
     glm::vec4 right_light_pos = glm::vec4(-faro_x, faro_y, faro_z, 1.0f);
 
+    glm::vec4 center_shadow_light_pos = glm::vec4(car_bbox.center().x, faro_y, faro_z, 1.0f);
+
     for (unsigned int ic = 0; ic < r.cars().size(); ++ic) {
         stack.push();
 
-        stack.mult(r.cars()[ic].frame);
+		glm::mat4 frame = r.cars()[ic].frame;
+        stack.mult(frame);
 
         float scale = 1.f / car_bbox.diagonal();
         stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(5.f * scale)));
@@ -1255,6 +1329,11 @@ void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car
         car_lights[right_idx].position = final_pos_right;
         car_lights[right_idx].direction = final_dir;
 
+        glm::vec3 up = glm::normalize(glm::vec3(frame[1]));
+		glm::vec3 shadow_cam_pos = glm::vec3(car_scene_model * center_shadow_light_pos);
+
+		carLightSpace[ic] = carLightProjection * glm::lookAt(shadow_cam_pos, shadow_cam_pos + final_dir, up);
+
         stack.pop(); // Ripuliamo lo stack per la prossima auto
     }
 }
@@ -1262,8 +1341,8 @@ void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car
 
 void init_lamp_lights(uniform_light lamp_lights[], box3 lamp_bbox) {
 
-    float innerAngle = glm::radians(10.f);
-    float outerAngle = glm::radians(15.f);
+    float innerAngle = glm::radians(15.f);
+    float outerAngle = glm::radians(20.f);
 
     glm::vec3 dir = glm::vec3(0, -1, 0);
 
@@ -1301,6 +1380,7 @@ void send_pbr_texture(shader& shader) {
     glUniform1i(shader["uEmissive"], 3);
     glUniform1i(shader["uOcclusion"], 4);
     glUniform1i(shader["uShadowMap"], 5);
+    glUniform1i(shader["uCarShadowMap"], 6);
 }
 
 

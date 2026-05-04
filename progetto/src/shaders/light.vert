@@ -10,12 +10,14 @@ out vec2 vTex;
 out vec3 vNormal;
 out vec3 vFragPos;
 out vec4 vFragPosLight;
+out vec4 vFragCarPosLight[10];
 
 layout (std140, binding = 0) uniform Matrices
 {
 	mat4 uProj;
 	mat4 uView;
 	mat4 uLightSpace;
+	mat4 uCarLightSpace[10];
 };
 
 
@@ -29,5 +31,9 @@ void main(void)
 	vFragPos = vec3(uModel * vec4(aPosition, 1.0));
 	vFragPosLight = uLightSpace * vec4(vFragPos, 1.0);
     gl_Position = uProj*uView*uModel*vec4(aPosition, 1.0); 
+
+	for (int i = 0; i < 10; i++){
+		vFragCarPosLight[i] = uCarLightSpace[i] * vec4(vFragPos, 1.0);
+	}
 
 }
