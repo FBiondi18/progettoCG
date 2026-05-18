@@ -34,51 +34,8 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 
-#include <chrono>
-
 const unsigned int SRC_WIDTH = 800;
 const unsigned int SRC_HEIGHT = 800;
-
-struct CPUTimer {
-    std::chrono::time_point<std::chrono::high_resolution_clock> start_time;
-    float elapsed_ms = 0.0f;
-
-    void start() {
-        start_time = std::chrono::high_resolution_clock::now();
-    }
-
-    void stop() {
-        auto end_time = std::chrono::high_resolution_clock::now();
-        elapsed_ms = std::chrono::duration<float, std::milli>(end_time - start_time).count();
-    }
-};
-
-struct GPUTimer {
-    unsigned int queryID;
-    float elapsed_ms = 0.0f;
-
-    void init() {
-        glGenQueries(1, &queryID);
-    }
-
-    void start() {
-        // Diciamo a OpenGL di iniziare a contare il tempo
-        glBeginQuery(GL_TIME_ELAPSED, queryID);
-    }
-
-    void stop() {
-        // Diciamo a OpenGL di smettere di contare
-        glEndQuery(GL_TIME_ELAPSED);
-    }
-
-    void update_results() {
-        GLuint64 elapsed_ns;
-        // Recuperiamo il risultato in nanosecondi
-        glGetQueryObjectui64v(queryID, GL_QUERY_RESULT, &elapsed_ns);
-        // Convertiamo in millisecondi per comodità di lettura
-        elapsed_ms = static_cast<float>(elapsed_ns) / 1000000.0f;
-    }
-};
 
 trackball tb[2];
 int curr_tb;
@@ -241,17 +198,19 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
 
-// --- Texture Utilities ---
+// --- Utilities ---
 GLuint createDummyTexture(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
 void initDummyTextures(GLuint& dummyWhiteTex, GLuint& dummyBlackTex, GLuint& dummyNormalTex);
 void send_pbr_texture(shader& shader);
+glm::vec3 get_closest_track_center(const glm::vec3& lamp_pos, const track& trk);
+std::vector<float> get_lamp_angles(const race& r);
 
 // --- Lighting & Environment ---
 glm::vec3 get_sun_light(const glm::vec3& sun_dir, float& out_exposure);
 void init_car_lights(uniform_light car_lights[], box3 car_bbox);
 void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car_bbox, glm::mat4& carLightProjection, glm::mat4 carLightSpace[]);
 void init_lamp_lights(uniform_light lamp_lights[], box3 lamp_bbox);
-void update_lamp_lights(matrix_stack& stack, uniform_light lamp_lights[], box3 lamp_bbox);
+void update_lamp_lights(matrix_stack& stack, uniform_light lamp_lights[], box3 lamp_bbox, glm::mat4 lampLightProjection, glm::mat4 lampLightSpace[], const std::vector<float>& lamp_angles);
 
 // --- Rendering Functions ---
 void render_terrain(renderable& r_terrain, matrix_stack& stack, shader& shader, GLuint grass_texture_id, std::vector<int>& m_idx);
@@ -259,8 +218,8 @@ void render_terrain_shadows(renderable& r_terrain, matrix_stack& stack, shader& 
 void render_track(renderable& r_track, matrix_stack& stack, shader& shader, GLuint road_texture_id, GLuint road_normal_id, std::vector<int>& m_idx, int offset);
 void render_tree(matrix_stack& stack, shader& shader, box3 tree_bbox, std::vector<renderable>& tree_objects, std::vector<int>& m_idx, int offset);
 void render_tree_shadows(matrix_stack& stack, shader& shader, box3 tree_bbox, std::vector<renderable>& tree_objects);
-void render_lamps(matrix_stack& stack, shader& shader, box3 lamp_bbox, std::vector<renderable>& lamp_objects, std::vector<int>& m_idx, int offset);
-void render_lamps_shadows(matrix_stack& stack, shader& shader, box3 lamp_bbox, std::vector<renderable>& lamp_objects);
+void render_lamps(matrix_stack& stack, shader& shader, box3 lamp_bbox, std::vector<renderable>& lamp_objects, std::vector<int>& m_idx, int offset, const std::vector<float>& lamp_angles);
+void render_lamps_shadows(matrix_stack& stack, shader& shader, box3 lamp_bbox, std::vector<renderable>& lamp_objects, const std::vector<float>& lamp_angles);
 void render_cameramen(matrix_stack& stack, shader& shader, box3 camera_bbox, std::vector<renderable>& camera_objects, std::vector<int>& m_idx, int offset);
 void render_cameramen_shadows(matrix_stack& stack, shader& shader, box3 camera_bbox, std::vector<renderable>& camera_objects);
 void render_cars(matrix_stack& stack, shader& shader, box3 car_bbox, std::vector<renderable>& car_objects, std::vector<int>& m_idx, int offset);
@@ -268,7 +227,6 @@ void render_cars_shadows(matrix_stack& stack, shader& shader, box3 car_bbox, std
 void render_cars_blending(matrix_stack& stack, shader& shader, box3 car_bbox, std::vector<renderable>& car_objects, std::vector<int>& m_idx, std::vector<int>& b_idx);
 
 // --- Matrix & Material Utilities ---
-glm::mat4 build_lamp_model_matrix(const race& r, unsigned int lamp_index, const box3& lamp_bbox);
 void push_back_material(uniform_material* m, std::vector<renderable> objects, std::vector<int>& material_idx, std::vector<int>& blend_idx);
 void set_track_ubo(uniform_material* m, std::vector<int>& material_idx, int idx);
 
@@ -311,7 +269,6 @@ int main(int argc, char** argv)
     renderable r_cube = shape_maker::cube();
     renderable r_track; r_track.create(); game_to_renderable::to_track(r, r_track);
     renderable r_terrain; r_terrain.create(); game_to_renderable::to_heightfield(r, r_terrain);
-	renderable r_sun_dir = shape_maker::cylinder(6, 0.05f);
     std::cout << "VAO: " << r_terrain.vao << std::endl;
     std::cout << "Index buffer (EBO): " << r_terrain().ind << std::endl;
     std::cout << "Index count: " << r_terrain().count << std::endl;
@@ -358,13 +315,23 @@ int main(int argc, char** argv)
     push_back_material(&materials[idx], tree_objects, material_idx, blend_idx);
     idx += tree_objects.size();
 
-    printf("idx: %d", idx);
+    printf("idx: %d\n", idx);
+
+    shader model_shader;
+    model_shader.create_program("shaders/basic.vert", "shaders/model.frag");
+    glUseProgram(model_shader.program);
+    send_pbr_texture(model_shader);
 
     shader shadow_shader;
 	shadow_shader.create_program("shaders/shadow.vert", "shaders/shadow.frag");
 
+    shader shadowTree_shader;
+    shadowTree_shader.create_program("shaders/shadow.vert", "shaders/shadow_tree.frag");
+	glUseProgram(shadowTree_shader.program);
+    glUniform1i(shadowTree_shader["uTex"], 0);
+
     shader tree_shader;
-    tree_shader.create_program("shaders/light.vert", "shaders/tree.frag");
+    tree_shader.create_program("shaders/basic.vert", "shaders/tree.frag");
 	glUseProgram(tree_shader.program);
 	glUniform1i(tree_shader["uTex"], 0);
 	glUniform1i(tree_shader["uNormalTex"], 2);
@@ -372,16 +339,16 @@ int main(int argc, char** argv)
 	glUniform1i(tree_shader["uCarShadowMap"], 6);
 
     shader terrain_shader;
-	terrain_shader.create_program("shaders/light.vert", "shaders/terrain.frag");
+	terrain_shader.create_program("shaders/terrain.vert", "shaders/terrain.frag");
 	glUseProgram(terrain_shader.program);
     glUniform1i(terrain_shader["uTex"], 0);
 	glUniform1i(terrain_shader["uShadowMap"], 5);
     glUniform1i(terrain_shader["uCarShadowMap"], 6);
+	glUniform1i(terrain_shader["uLampShadowMap"], 7);
 
-    shader model_shader;
-    model_shader.create_program("shaders/light.vert", "shaders/model.frag");
-	shader current_program;
+	shader current_program = model_shader;
 
+    check_gl_errors(__LINE__, __FILE__);
     // --- Caricamento texture tileabile per l'erba ---
 	texture grass_texture;
 	grass_texture.load("./assets/texture/grass_tile.PNG", 0);
@@ -392,21 +359,13 @@ int main(int argc, char** argv)
 	texture road_normal_tex;
 	road_normal_tex.load("./assets/texture/normal_map.JPG", 1);
 
-	std::string path = "./assets/texture/skybox/Daylight Box";
-	texture skybox_texture;
-	skybox_texture.load_cubemap( path + "_Right.bmp", path + "_Left.bmp", path + "_Top.bmp", path + "_Bottom.bmp", path + "_Front.bmp", path + "_Back.bmp" , 0);
-
     glViewport(0, 0, SRC_WIDTH, SRC_HEIGHT);
 
     tb[0].reset();
     tb[0].set_center_radius(glm::vec3(0, 0, 0), 1.f);
     curr_tb = 0;
 
-
     proj = glm::perspective(glm::radians(45.f), 1.f, 0.01f, 5.0f); //modificato
-	glUseProgram(model_shader.program);
-	current_program = model_shader;
-    send_pbr_texture(model_shader);
 
     unsigned int ubo_material;
 	glGenBuffers(1, &ubo_material);
@@ -415,7 +374,6 @@ int main(int argc, char** argv)
 	glBindBufferBase(GL_UNIFORM_BUFFER, 1, ubo_material);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, 18 * sizeof(uniform_material), &materials[0]);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
 
     // Creazione UBO per le luci
 	uniform_light lights[40];
@@ -433,7 +391,7 @@ int main(int argc, char** argv)
     glm::vec4 light_info[3];
 
     // depth map
-    const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
+    const unsigned int SHADOW_WIDTH = 4096, SHADOW_HEIGHT = 4096;
 
     unsigned int depthMap;
     glGenTextures(1, &depthMap);
@@ -452,7 +410,7 @@ int main(int argc, char** argv)
     glGenTextures(1, &carDepthMap);
     glBindTexture(GL_TEXTURE_2D_ARRAY, carDepthMap);
     glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F,
-        SHADOW_WIDTH/4, SHADOW_HEIGHT/4, 10, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        512, 512, 10, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
@@ -475,7 +433,7 @@ int main(int argc, char** argv)
     unsigned int ubo;
     glGenBuffers(1, &ubo);
     glBindBuffer(GL_UNIFORM_BUFFER, ubo);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 13, nullptr, GL_STATIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 33, nullptr, GL_STATIC_DRAW);
     glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &proj[0][0]);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
@@ -492,6 +450,28 @@ int main(int argc, char** argv)
 	glm::mat4 carLightProjection = glm::perspective(glm::radians(45.0f), 1.0f, 0.01f, 20.0f);
 	glm::mat4 carLightSpaceMatrix[10];
 
+	unsigned int lampDepthMap;
+    glGenTextures(1, &lampDepthMap);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, lampDepthMap);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F,
+        512, 512, 20, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+    unsigned int lampDepthMapFBO;
+    glGenFramebuffers(1, &lampDepthMapFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, lampDepthMapFBO);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    glm::mat4 lampLightView[20];
+    glm::mat4 lampLightProjection = glm::perspective(glm::radians(50.0f), 1.0f, 0.01f, 10.0f);
+    glm::mat4 lampLightSpaceMatrix[20];
+
     r.start(11, 0, 0, 600);
     r.update();
 
@@ -500,19 +480,13 @@ int main(int argc, char** argv)
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 
-    // inizializzazione per misura delle risorse
-    CPUTimer cpu_timer;
-    GPUTimer gpu_timer;
-    gpu_timer.init();
-
     float exposure = 0.0f;
+
+	std::vector<float> lamp_angles = get_lamp_angles(r);
 
     while (!glfwWindowShouldClose(window)) {
 
         int offset = 0;
-        // partenza timer CPU e GPU
-        cpu_timer.start();
-        gpu_timer.start();
 
         glm::vec3 lightDir = glm::vec3(r.sunlight_direction().x, r.sunlight_direction().y, r.sunlight_direction().z);
 		light_info[0] = glm::vec4(lightDir, 0.0);
@@ -573,7 +547,7 @@ int main(int argc, char** argv)
 
 		// aggiorna le posizioni e direzioni dei fari delle auto
 		glBindBuffer(GL_UNIFORM_BUFFER, light_ubo);
-		update_lamp_lights(stack, &lights[0], lamp_bbox);
+		update_lamp_lights(stack, &lights[0], lamp_bbox, lampLightProjection, &lampLightSpaceMatrix[0], lamp_angles);
 		update_car_lights(stack, &lights[20], car_bbox, carLightProjection, &carLightSpaceMatrix[0]);
         glBufferSubData(GL_UNIFORM_BUFFER, 0, 40 * sizeof(uniform_light), &lights[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
@@ -581,12 +555,13 @@ int main(int argc, char** argv)
 		//pass per la shadow map delle auto
 		glBindBuffer(GL_UNIFORM_BUFFER, ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 3 * sizeof(glm::mat4), 10 * sizeof(glm::mat4), &carLightSpaceMatrix[0]);
+		glBufferSubData(GL_UNIFORM_BUFFER, 13 * sizeof(glm::mat4), 20 * sizeof(glm::mat4), &lampLightSpaceMatrix[0]);
 
         glBindFramebuffer(GL_FRAMEBUFFER, carDepthMapFBO);
-        glViewport(0, 0, SHADOW_WIDTH/4, SHADOW_HEIGHT/4);
+        glViewport(0, 0, 512, 512);
         current_program = shadow_shader;
         glUseProgram(current_program.program);
-        glCullFace(GL_FRONT);
+        //glCullFace(GL_FRONT);
 
         for (int ic = 0; ic < r.cars().size(); ++ic) {
             glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, carDepthMap, 0, ic);
@@ -596,7 +571,22 @@ int main(int argc, char** argv)
 
             render_cars_shadows(stack, current_program, car_bbox, car_objects);
             render_cameramen_shadows(stack, current_program, camera_bbox, camera_objects);
-            render_lamps_shadows(stack, current_program, lamp_bbox, lamp_objects);
+            render_lamps_shadows(stack, current_program, lamp_bbox, lamp_objects, lamp_angles);
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// pass per la shadow map dei lampioni
+        glBindFramebuffer(GL_FRAMEBUFFER, lampDepthMapFBO);
+
+        for (int il = 0; il < r.lamps().size(); ++il) {
+            glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, lampDepthMap, 0, il);
+            glClear(GL_DEPTH_BUFFER_BIT);
+
+			glUniform1i(current_program["indice"], 10 + il);
+
+            render_cars_shadows(stack, current_program, car_bbox, car_objects);
+            render_lamps_shadows(stack, current_program, lamp_bbox, lamp_objects, lamp_angles);
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -605,14 +595,21 @@ int main(int argc, char** argv)
 		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
         glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
         glClear(GL_DEPTH_BUFFER_BIT);
-        glCullFace(GL_FRONT);
+        //glCullFace(GL_FRONT);
 
         glUniform1i(current_program["indice"], -1);
         render_cars_shadows(stack, current_program, car_bbox, car_objects);
         render_cameramen_shadows(stack, current_program, camera_bbox, camera_objects);
-        render_lamps_shadows(stack, current_program, lamp_bbox, lamp_objects);
-        render_tree_shadows(stack, current_program, tree_bbox, tree_objects);
+        render_lamps_shadows(stack, current_program, lamp_bbox, lamp_objects, lamp_angles);
         render_terrain_shadows(r_terrain, stack, current_program);
+
+        //disegno le ombre degli alberi con alpa testing
+        current_program = shadowTree_shader;
+		glUseProgram(current_program.program);
+        glUniform1i(current_program["indice"], -1);
+        glDisable(GL_CULL_FACE);
+        render_tree_shadows(stack, current_program, tree_bbox, tree_objects);
+        glEnable(GL_CULL_FACE);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -621,6 +618,8 @@ int main(int argc, char** argv)
         glBindTexture(GL_TEXTURE_2D, depthMap);
 		glActiveTexture(GL_TEXTURE6);
         glBindTexture(GL_TEXTURE_2D_ARRAY, carDepthMap);
+		glActiveTexture(GL_TEXTURE7);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, lampDepthMap);
 
 		current_program = model_shader;
 		glUseProgram(current_program.program);
@@ -635,10 +634,10 @@ int main(int argc, char** argv)
         offset += car_objects.size();
         render_cameramen(stack, current_program, camera_bbox, camera_objects, material_idx, offset);
         offset += camera_objects.size();
-		render_lamps(stack, current_program, lamp_bbox, lamp_objects, material_idx, offset);
+		render_lamps(stack, current_program, lamp_bbox, lamp_objects, material_idx, offset, lamp_angles);
         offset += lamp_objects.size();
         glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(-3.f, -3.f);
+        glPolygonOffset(-3.2f, -3.2f);
         render_track(r_track, stack, current_program, road_texture.id, road_normal_tex.id, material_idx, offset);
 		glDisable(GL_POLYGON_OFFSET_FILL);
         offset += 1;
@@ -657,29 +656,6 @@ int main(int argc, char** argv)
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
         check_gl_errors(__LINE__, __FILE__);
-        gpu_timer.stop();
-        cpu_timer.stop();
-
-        // Aggiorna il risultato della GPU
-        gpu_timer.update_results();
-
-        /* draw the Graphical User Interface */
-        ImGui_ImplGlfw_NewFrame();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::Begin("Risorse");
-        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "FPS: %.1f", ImGui::GetIO().Framerate);
-        ImGui::Separator();
-
-        ImGui::Text("CPU Time: %.3f ms", cpu_timer.elapsed_ms);
-        ImGui::Text("GPU Time: %.3f ms", gpu_timer.elapsed_ms);
-
-        ImGui::End();
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        /* end of graphical user interface */
 
         stack.pop();
         glfwSwapBuffers(window);
@@ -799,8 +775,8 @@ glm::vec3 get_sun_light(const glm::vec3& sun_dir, float& out_exposure) {
     glm::vec3 base_sunset = glm::vec3(1.0f, 0.6f, 0.2f);
     glm::vec3 base_night = glm::vec3(0.6f, 0.7f, 1.0f);
 
-    float int_noon = 25.0f;
-    float int_sunset = 5.0f;
+    float int_noon = 30.0f;
+    float int_sunset = 10.0f;
     float int_night = 0.2f;
 
     glm::vec3 color_noon = base_noon * int_noon;
@@ -862,8 +838,10 @@ void render_terrain(renderable& r_terrain, matrix_stack& stack, shader& shader, 
 void render_terrain_shadows(renderable& r_terrain, matrix_stack& stack, shader& shader) {
 
     glDepthRange(0.01, 1);
-
+    stack.push();
+    stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(0.0f, -0.17f, 0.0f)));
     glUniformMatrix4fv(shader["uModel"], 1, GL_FALSE, &stack.m()[0][0]);
+    stack.pop();
     r_terrain.bind();
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glDrawElements(GL_TRIANGLES, r_terrain().count, GL_UNSIGNED_INT, 0);
@@ -901,12 +879,10 @@ void render_tree(matrix_stack& stack, shader& shader, box3 tree_bbox, std::vecto
 
         glm::vec3 curr_pos = r.trees()[i].pos;
         stack.mult(glm::translate(glm::mat4(1.f), curr_pos));
-        stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(0.0f, 2.53f, 0.0f)));
-        stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(7.3f)));
-
         float scale = 1.f / tree_bbox.diagonal();
-        stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(scale, scale, scale)));
-        stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(-tree_bbox.center())));
+        stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(7.3f * scale)));
+        stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(-tree_bbox.center().x, -tree_bbox.min.y, -tree_bbox.center().z)));
+
 
         for (unsigned int j = 0; j < tree_objects.size(); ++j) {
             tree_objects[j].bind();
@@ -937,17 +913,19 @@ void render_tree_shadows(matrix_stack& stack, shader& shader, box3 tree_bbox, st
 
         glm::vec3 curr_pos = r.trees()[i].pos;
         stack.mult(glm::translate(glm::mat4(1.f), curr_pos));
-        stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(0.0f, 2.53f, 0.0f)));
-        stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(7.3f)));
-
         float scale = 1.f / tree_bbox.diagonal();
-        stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(scale, scale, scale)));
-        stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(-tree_bbox.center())));
+        stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(7.3f * scale)));
+        stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(-tree_bbox.center().x, -tree_bbox.min.y, -tree_bbox.center().z)));
 
         for (unsigned int j = 0; j < tree_objects.size(); ++j) {
             tree_objects[j].bind();
             stack.push();
             stack.mult(tree_objects[j].transform);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, tree_objects[j].mater.base_color_texture);
+
+			glUniform1f(shader["alpha_cutoff"], tree_objects[j].mater.alpha_cutoff);
 
             glUniformMatrix4fv(shader["uModel"], 1, GL_FALSE, &stack.m()[0][0]);
             glDrawElements(tree_objects[j]().mode, tree_objects[j]().count, tree_objects[j]().itype, 0);
@@ -959,24 +937,16 @@ void render_tree_shadows(matrix_stack& stack, shader& shader, box3 tree_bbox, st
 }
 
 
-glm::mat4 build_lamp_model_matrix(const race& r, unsigned int lamp_index, const box3& lamp_bbox) {
-    glm::mat4 model_matrix = glm::translate(glm::mat4(1.0f), r.lamps()[lamp_index].pos);
-
-    if (lamp_index < r.lamps().size() / 2) {
-        model_matrix = glm::rotate(model_matrix, glm::radians(180.0f), glm::vec3(0, 1, 0));
-    }
-
-    float scale = 1.0f / lamp_bbox.diagonal();
-    model_matrix = glm::scale(model_matrix, glm::vec3(7.3f * scale));
-    return model_matrix;
-}
-
-
-void render_lamps(matrix_stack& stack, shader& shader, box3 lamp_bbox, std::vector<renderable>& lamp_objects, std::vector<int>& m_idx, int offset) {
+void render_lamps(matrix_stack& stack, shader& shader, box3 lamp_bbox, std::vector<renderable>& lamp_objects, std::vector<int>& m_idx, int offset, const std::vector<float>& lamp_angles) {
     for (unsigned int i = 0; i < r.lamps().size(); ++i) {
         stack.push();
 
-        stack.mult(build_lamp_model_matrix(r, i, lamp_bbox));
+        stack.mult(glm::translate(glm::mat4(1.0f), r.lamps()[i].pos));
+        
+        stack.mult(glm::rotate(glm::mat4(1.0f), lamp_angles[i], glm::vec3(0, 1, 0)));
+        
+        float scale = 1.0f / lamp_bbox.diagonal();
+		stack.mult(glm::scale(glm::mat4(1.0f), glm::vec3(7.3f * scale)));
 
         for (unsigned int j = 0; j < lamp_objects.size(); ++j) {
             lamp_objects[j].bind();
@@ -1010,10 +980,16 @@ void render_lamps(matrix_stack& stack, shader& shader, box3 lamp_bbox, std::vect
 }
 
 
-void render_lamps_shadows(matrix_stack& stack, shader& shader, box3 lamp_bbox, std::vector<renderable>& lamp_objects) {
+void render_lamps_shadows(matrix_stack& stack, shader& shader, box3 lamp_bbox, std::vector<renderable>& lamp_objects, const std::vector<float>& lamp_angles) {
     for (unsigned int i = 0; i < r.lamps().size(); ++i) {
         stack.push();
-        stack.mult(build_lamp_model_matrix(r, i, lamp_bbox));
+
+        stack.mult(glm::translate(glm::mat4(1.0f), r.lamps()[i].pos));
+        
+        stack.mult(glm::rotate(glm::mat4(1.0f), lamp_angles[i], glm::vec3(0, 1, 0)));
+        
+        float scale = 1.0f / lamp_bbox.diagonal();
+        stack.mult(glm::scale(glm::mat4(1.0f), glm::vec3(7.3f * scale)));
 
         for (unsigned int j = 0; j < lamp_objects.size(); ++j) {
             lamp_objects[j].bind();
@@ -1039,7 +1015,7 @@ void render_cameramen(matrix_stack& stack, shader& shader, box3 camera_bbox, std
         stack.mult(r.cameramen()[ic].frame);
         float scale = 1.f / camera_bbox.diagonal();
         stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(scale * 2.2f)));
-        stack.mult(glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(0, 1, 0)));
+        stack.mult(glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(0, 1, 0)));
         stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(-camera_bbox.center().x, -camera_bbox.min.y, -camera_bbox.center().z)));
 
         for (unsigned int j = 0; j < camera_objects.size(); ++j) {
@@ -1082,7 +1058,7 @@ void render_cameramen_shadows(matrix_stack& stack, shader& shader, box3 camera_b
         stack.mult(r.cameramen()[ic].frame);
         float scale = 1.f / camera_bbox.diagonal();
         stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(scale * 2.2f)));
-        stack.mult(glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(0, 1, 0)));
+        stack.mult(glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(0, 1, 0)));
         stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(-camera_bbox.center().x, -camera_bbox.min.y, -camera_bbox.center().z)));
 
         for (unsigned int j = 0; j < camera_objects.size(); ++j) {
@@ -1271,29 +1247,30 @@ void init_car_lights(uniform_light car_lights[], box3 car_bbox) {
 
         // faro sinistro anteriore
         car_lights[left_idx].color = color;
-        car_lights[left_idx].intensity = 20.0f;
-        car_lights[left_idx].cutOff = glm::cos(glm::radians(12.5f));
-        car_lights[left_idx].outerCutOff = glm::cos(glm::radians(17.5f));
+        car_lights[left_idx].intensity = 10.0f;
+        car_lights[left_idx].cutOff = glm::cos(glm::radians(15.f));
+        car_lights[left_idx].outerCutOff = glm::cos(glm::radians(22.5f));
 
         //faro destro anteriore
         car_lights[right_idx].color = color;
-        car_lights[right_idx].intensity = 20.0f;
-        car_lights[right_idx].cutOff = glm::cos(glm::radians(12.5f));
-        car_lights[right_idx].outerCutOff = glm::cos(glm::radians(17.5f));
+        car_lights[right_idx].intensity = 10.0f;
+        car_lights[right_idx].cutOff = glm::cos(glm::radians(15.f));
+        car_lights[right_idx].outerCutOff = glm::cos(glm::radians(22.5f));
     }
 }
 
 
 void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car_bbox, glm::mat4& carLightProjection, glm::mat4 carLightSpace[]) {
 
-    glm::vec4 forward_dir = glm::vec4(0.0f, -0.3f, 1.0f, 0.0f);
+    glm::vec4 forward_dir = glm::vec4(0.0f, -0.2f, 1.0f, 0.0f);
 
     float car_height = car_bbox.max.y - car_bbox.min.y;
 
     // Posizione locale dei fari rispetto al centro del modello 3D
-    float faro_z = car_bbox.center().z + car_bbox.max.z * 0.5f;
+    float faro_z = car_bbox.max.z * 0.775f;
     float faro_y = car_height * 0.5f;
-    float faro_x = car_bbox.center().x + car_bbox.max.x * 0.75f;
+    float faro_x = car_bbox.max.x * 0.65f;
+
 
     glm::vec4 left_light_pos = glm::vec4(faro_x, faro_y, faro_z, 1.0f);
     glm::vec4 right_light_pos = glm::vec4(-faro_x, faro_y, faro_z, 1.0f);
@@ -1309,11 +1286,9 @@ void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car
         float scale = 1.f / car_bbox.diagonal();
         stack.mult(glm::scale(glm::mat4(1.f), glm::vec3(5.f * scale)));
         stack.mult(glm::rotate(glm::mat4(1.f), glm::radians(180.f), glm::vec3(0, 1, 0)));
-        stack.mult(glm::translate(glm::mat4(1.f), glm::vec3(-car_bbox.center().x, car_height * 0.5f, -car_bbox.center().z)));
 
         glm::mat4 car_scene_model = stack.m();
 
-        // Trasformiamo i punti e i vettori locali nello spazio globale della scena
         glm::vec3 final_dir = glm::normalize(glm::vec3(car_scene_model * forward_dir));
         glm::vec3 final_pos_left = glm::vec3(car_scene_model * left_light_pos);
         glm::vec3 final_pos_right = glm::vec3(car_scene_model * right_light_pos);
@@ -1334,15 +1309,15 @@ void update_car_lights(matrix_stack& stack, uniform_light car_lights[], box3 car
 
 		carLightSpace[ic] = carLightProjection * glm::lookAt(shadow_cam_pos, shadow_cam_pos + final_dir, up);
 
-        stack.pop(); // Ripuliamo lo stack per la prossima auto
+        stack.pop(); 
     }
 }
 
 
 void init_lamp_lights(uniform_light lamp_lights[], box3 lamp_bbox) {
 
-    float innerAngle = glm::radians(15.f);
-    float outerAngle = glm::radians(20.f);
+    float innerAngle = glm::radians(20.f);
+    float outerAngle = glm::radians(25.f);
 
     glm::vec3 dir = glm::vec3(0, -1, 0);
 
@@ -1351,23 +1326,30 @@ void init_lamp_lights(uniform_light lamp_lights[], box3 lamp_bbox) {
     for (unsigned int i = 0; i < r.lamps().size(); ++i) {
         lamp_lights[i].direction = dir;
         lamp_lights[i].color = color;
-        lamp_lights[i].intensity = 10.0f;
+        lamp_lights[i].intensity = 5.0f;
         lamp_lights[i].cutOff = glm::cos(innerAngle);
         lamp_lights[i].outerCutOff = glm::cos(outerAngle);
     }
 }
 
 
-void update_lamp_lights(matrix_stack& stack, uniform_light lamp_lights[], box3 lamp_bbox) {
-
+void update_lamp_lights(matrix_stack& stack, uniform_light lamp_lights[], box3 lamp_bbox, glm::mat4 lampLightProjection, glm::mat4 lampLightSpace[], const std::vector<float>& lamp_angles) {
     for (unsigned int i = 0; i < r.lamps().size(); ++i) {
         stack.push();
-        stack.mult(glm::translate(glm::mat4(1.0f), glm::vec3(r.lamps()[i].pos.x, lamp_bbox.max.y - lamp_bbox.min.y, r.lamps()[i].pos.z)));
+        glm::vec3 up_vector = glm::vec3(1, 0, 0);
+        glm::vec3 lamp_pos = glm::vec3(r.lamps()[i].pos);
+        stack.mult(glm::translate(glm::mat4(1.0f), lamp_pos));
+        stack.mult(glm::rotate(glm::mat4(1.0f), lamp_angles[i], glm::vec3(0, 1, 0)));
+		up_vector = glm::rotate(up_vector, lamp_angles[i], glm::vec3(0, 1, 0));
+		
+        glm::vec4 local_pos = glm::vec4(lamp_bbox.max.x - lamp_bbox.min.x, lamp_bbox.max.y, lamp_bbox.center().z, 1.0f);
         float scale = 1.0f / lamp_bbox.diagonal();
         stack.mult(glm::scale(glm::mat4(1.0f), glm::vec3(7.3f * scale)));
-        glm::mat4 lamp_model = stack.m();
-        glm::vec3 light_pos = glm::vec3(lamp_model * glm::vec4(0, 1, 0, 1));
+        glm::vec3 light_pos = stack.m() * local_pos;
         lamp_lights[i].position = light_pos;
+
+		lampLightSpace[i] = lampLightProjection * glm::lookAt(light_pos, light_pos + lamp_lights[i].direction, up_vector);
+
         stack.pop();
     }
 }
@@ -1381,6 +1363,7 @@ void send_pbr_texture(shader& shader) {
     glUniform1i(shader["uOcclusion"], 4);
     glUniform1i(shader["uShadowMap"], 5);
     glUniform1i(shader["uCarShadowMap"], 6);
+    glUniform1i(shader["uLampShadowMap"], 7);
 }
 
 
@@ -1414,4 +1397,55 @@ void set_track_ubo(uniform_material* m, std::vector<int>& material_idx, int idx)
     m[0].alpha_mode = 0;
 
     material_idx.push_back(idx);
+}
+
+
+glm::vec3 get_closest_track_center(const glm::vec3& lamp_pos, const track& trk) {
+    float min_dist = std::numeric_limits<float>::max();
+    glm::vec3 best_center = lamp_pos;
+
+    // Assumiamo che curbs[0] e curbs[1] abbiano la stessa dimensione
+    size_t n_points = trk.curbs[0].size();
+
+    if (n_points == 0) return best_center; // Controllo di sicurezza
+
+    for (size_t i = 0; i < n_points; ++i) {
+        // Calcola il centro della pista per il segmento i-esimo
+        // facendo la media tra il cordolo sinistro e quello destro
+        glm::vec3 track_center = (trk.curbs[0][i] + trk.curbs[1][i]) * 0.5f;
+
+        // Calcola la distanza tra il lampione e questo centro
+        float dist = glm::distance(lamp_pos, track_center);
+
+        // Se è il punto più vicino trovato finora, salvalo
+        if (dist < min_dist) {
+            min_dist = dist;
+            best_center = track_center;
+        }
+    }
+
+    return best_center;
+}
+
+
+std::vector<float> get_lamp_angles(const race& r) {
+    std::vector<float> lamp_angles;
+    lamp_angles.clear();
+    const track& trk = r.t();
+
+    for (unsigned int i = 0; i < r.lamps().size(); ++i) {
+        glm::vec3 lamp_pos = r.lamps()[i].pos;
+
+        // 1. Trova il centro della pista più vicino
+        glm::vec3 target = get_closest_track_center(lamp_pos, trk);
+
+        // 2. Calcola la direzione ignorando l'altezza (Y) per non far inclinare i lampioni in alto/basso
+        glm::vec3 dir = glm::normalize(glm::vec3(target.x - lamp_pos.x, 0.0f, target.z - lamp_pos.z));
+
+        // 3. Calcola l'angolo con atan2
+        float angle = std::atan2(dir.x, dir.z) + glm::radians(-90.0f);
+
+        lamp_angles.push_back(angle);
+    }
+    return lamp_angles;
 }

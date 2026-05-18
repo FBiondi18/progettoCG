@@ -30,10 +30,12 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="src\shaders\model.frag" />
-    <None Include="src\shaders\light.vert" />
+    <None Include="src\shaders\basic.vert" />
     <None Include="src\shaders\shadow.frag" />
     <None Include="src\shaders\shadow.vert" />
+    <None Include="src\shaders\shadow_tree.frag" />
     <None Include="src\shaders\terrain.frag" />
+    <None Include="src\shaders\terrain.vert" />
     <None Include="src\shaders\tree.frag" />
   </ItemGroup>
   <ItemGroup>

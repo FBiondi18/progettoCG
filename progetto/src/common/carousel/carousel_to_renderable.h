@@ -122,57 +122,59 @@ struct game_to_renderable {
 		to_stick_object(r.lamps(), r_t);
 	}
 
-
 	static void to_heightfield(const race& r, renderable& r_hf) {
 		std::vector<unsigned int > buffer_id;
-		const unsigned int& Z =static_cast<unsigned int>(r.ter().size_pix[1]);
-		const unsigned int& X =static_cast<unsigned int>(r.ter().size_pix[0]);
+
+		const unsigned int Z = static_cast<unsigned int>(r.ter().size_pix[1]);
+		const unsigned int X = static_cast<unsigned int>(r.ter().size_pix[0]);
 
 		terrain ter = r.ter();
+		std::vector<float> hf3d;
 
-		std::vector<float>   hf3d;
-		GLuint va_id;
-		for (unsigned int iz = 0; iz < Z; ++iz)
+		for (unsigned int iz = 0; iz < Z; ++iz) {
 			for (unsigned int ix = 0; ix < X; ++ix) {
-				hf3d.push_back(ter.rect_xz[0] + (ix / float(X)) * ter.rect_xz[2]);
-				hf3d.push_back(r.ter().hf(ix, iz));
-				hf3d.push_back(ter.rect_xz[1] + (iz / float(Z)) * ter.rect_xz[3]);
 
-				float dx = ter.rect_xz[2] / float(X); // size_x / width_pixels
-				float dz = ter.rect_xz[3] / float(Z); // size_z / height_pixels
+				// 1. Calcola le vere coordinate X e Z nel mondo
+				float world_x = ter.rect_xz[0] + (ix / float(X - 1)) * ter.rect_xz[2];
+				float world_z = ter.rect_xz[1] + (iz / float(Z - 1)) * ter.rect_xz[3];
+				float world_y = ter.y(world_x, world_z);
 
-				// 2. Protezione dai bordi (fondamentale con gli unsigned int)
+				hf3d.push_back(world_x);
+				hf3d.push_back(world_y);
+				hf3d.push_back(world_z);
+
+				// 2. Calcolo Normali 
+				float dx = ter.rect_xz[2] / float(X - 1);
+				float dz = ter.rect_xz[3] / float(Z - 1);
+
 				unsigned int ix_L = (ix > 0) ? ix - 1 : 0;
 				unsigned int ix_R = (ix < X - 1) ? ix + 1 : X - 1;
 				unsigned int iz_D = (iz > 0) ? iz - 1 : 0;
 				unsigned int iz_U = (iz < Z - 1) ? iz + 1 : Z - 1;
 
-				// 3. Campionamento delle altezze tramite la tua funzione hf()
 				float hL = ter.hf(ix_L, iz);
 				float hR = ter.hf(ix_R, iz);
 				float hD = ter.hf(ix, iz_D);
 				float hU = ter.hf(ix, iz_U);
 
-				// 4. Calcolo delle distanze effettive sui bordi
 				float delta_x = (ix_R - ix_L) * dx;
 				float delta_z = (iz_U - iz_D) * dz;
 
-				// 5. Vettore Normale (Prodotto vettoriale)
+				if (delta_x == 0.0f) delta_x = 1.0f;
+				if (delta_z == 0.0f) delta_z = 1.0f;
+
 				float nx = -delta_z * (hR - hL);
 				float ny = delta_x * delta_z;
 				float nz = -delta_x * (hU - hD);
 
-				// Normalizzazione
 				float len = std::sqrt(nx * nx + ny * ny + nz * nz);
+
 				hf3d.push_back(nx / len);
 				hf3d.push_back(ny / len);
 				hf3d.push_back(nz / len);
 
-				// aggiungo coordinate uv per la texture
-				hf3d.push_back((ix / float(X)) * 5.f);
-				hf3d.push_back((iz / float(Z)) * 5.f);
 
-
+				// 3. Generazione Indici Triangoli
 				if (iz < Z - 1 && ix < X - 1) {
 					buffer_id.push_back((iz * X) + ix);
 					buffer_id.push_back((iz * X) + ix + 1);
@@ -183,13 +185,13 @@ struct game_to_renderable {
 					buffer_id.push_back((iz + 1) * X + ix);
 				}
 			}
-		int stride = 8 * sizeof(float);
-		int total_elements = X * Z * 8;
+		}
 
-		va_id = r_hf.add_vertex_attribute<float>(&hf3d[0], total_elements, 0, 3, stride, 0);
+		int stride = 6 * sizeof(float);
+		int total_elements = static_cast<int>(hf3d.size());
+
+		GLuint va_id = r_hf.add_vertex_attribute<float>(&hf3d[0], total_elements, 0, 3, stride, 0);
 		r_hf.assign_vertex_attribute(va_id, total_elements, 2, 3, GL_FLOAT, stride, 3 * sizeof(float));
-		r_hf.assign_vertex_attribute(va_id, total_elements, 4, 2, GL_FLOAT, stride, 6 * sizeof(float));
 		r_hf.add_indices<unsigned int>(&buffer_id[0], static_cast<unsigned int>(buffer_id.size()), GL_TRIANGLES);
 	}
-
 };

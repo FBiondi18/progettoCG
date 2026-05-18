@@ -131,10 +131,10 @@ struct  terrain {
 		return glm::vec3(p_in.x, y(p_in.x, p_in.z), p_in.z);
 	}
 
-	/// given the x and z coordinates, returns the height of the terrain in (x,z)
+	// given the x and z coordinates, returns the height of the terrain in (x,z)
 	float y(float x, float z) const {
-		float yy = (z - rect_xz[1]) ;
-		float xx = (x - rect_xz[0]) ;
+		float yy = (z - rect_xz[1]);
+		float xx = (x - rect_xz[0]);
 		float sx = rect_xz[2] / size_pix[0];
 		float sy = rect_xz[3] / size_pix[1];
 
@@ -147,10 +147,18 @@ struct  terrain {
 		float u = i_min - i;
 		float v = j_min - j;
 
-		float value =	hf(i	, j		) * (1.f - u) * (1.f - v) +
-						hf(i	, j + 1 ) * (1.f - u) * v +
-						hf(i + 1, j		) * u * (1.f - v) +
-						hf(i + 1, j + 1 ) * u * v;
+		int max_i = size_pix[0] - 1;
+		int max_j = size_pix[1] - 1;
+
+		int i0 = glm::clamp(i, 0, max_i);
+		int j0 = glm::clamp(j, 0, max_j);
+		int i1 = glm::clamp(i + 1, 0, max_i);
+		int j1 = glm::clamp(j + 1, 0, max_j);
+
+		float value = hf(i0, j0) * (1.f - u) * (1.f - v) +
+			hf(i0, j1) * (1.f - u) * v +
+			hf(i1, j0) * u * (1.f - v) +
+			hf(i1, j1) * u * v;
 		return	value;
 	}
 

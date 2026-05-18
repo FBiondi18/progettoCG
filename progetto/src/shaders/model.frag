@@ -6,7 +6,14 @@ in vec3 vColor;
 in vec3 vNormal;
 in vec3 vFragPos;
 in vec4 vFragPosLight;
-in vec4 vFragCarPosLight[10];
+
+layout (std140, binding = 0) uniform Matrices
+{
+	mat4 uProj;
+	mat4 uView;
+	mat4 uLightSpace;
+	mat4 uLightSpaceMatrices[30];
+};
 
 struct material_model {
     vec4  uColor;
@@ -30,6 +37,7 @@ uniform sampler2D uEmissive;
 uniform sampler2D uOcclusion;
 uniform sampler2D uShadowMap;
 uniform sampler2DArray uCarShadowMap;
+uniform sampler2DArray uLampShadowMap;
 
 struct light {
     vec3 position;   
@@ -61,15 +69,15 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0);
 vec3 CalculatePBR(vec3 L, vec3 V, vec3 N, vec3 F0, vec3 albedo, float metallic, float roughness, vec3 radiance);
 float ShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L);
 float CarShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L, int carIndex);
+float LampShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L, int lampIndex);
 
 void main(void) 
 {
+    float carLinear = 0.22f;
+    float carQuadratic = 0.30f;
 
-    float carLinear = 100.f;
-    float carQuadratic = 150.f;
-
-    float linear = 150.f;
-    float quadratic = 300.f;
+    float linear = 0.22f;
+    float quadratic = 0.20f;
 
     vec4 texColor = texture(uTex, vTex);
     vec4 baseColor = texColor * models[indice].uColor;
@@ -126,7 +134,12 @@ void main(void)
             float d2 = distance * distance;
             float attenuation = 1.0 / (1.0 + linear * distance + quadratic * d2);
 
-            vec3 radiance = uLampLights[i].color * uLampLights[i].intensity * attenuation * spot;
+            vec4 fragLampPosLight = uLightSpaceMatrices[10 + i] * vec4(vFragPos, 1.0);
+            float shadowFactor = LampShadowCalculation(fragLampPosLight, N, L, i);
+
+            float visibility = 1.0 - shadowFactor;
+
+            vec3 radiance = uLampLights[i].color * uLampLights[i].intensity * attenuation * spot * visibility;
             Lout += CalculatePBR(L, V, N, F0, albedo, metallic, roughness, radiance);
         }
     }
@@ -135,6 +148,7 @@ void main(void)
     for (int i = 0; i < 20; ++i) {
         vec3 lightVec = uCarLights[i].position - vFragPos;
         float distance = length(lightVec);
+        if (distance > 0.5) continue;
         vec3 L = lightVec / distance; 
 
         // Calcolo Spot
@@ -148,8 +162,8 @@ void main(void)
             float attenuation = 1.0 / (1.0 + carLinear * distance + carQuadratic * d2);
 
             int carIndex = i/2;
-
-            float shadowFactor = CarShadowCalculation(vFragCarPosLight[carIndex], N, L, carIndex);
+            vec4 fragCarPosLight = uLightSpaceMatrices[carIndex] * vec4(vFragPos, 1.0);
+            float shadowFactor = CarShadowCalculation(fragCarPosLight, N, L, carIndex);
 
             float visibility = 1.0 - shadowFactor;
 
@@ -297,6 +311,35 @@ float CarShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L, int carIndex)
             vec3 uvCoords = vec3(projCoords.xy + vec2(x, y) * texelSize, float(carIndex));
             
             float pcfDepth = texture(uCarShadowMap, uvCoords).r; 
+            shadow += currentDepth - bias > pcfDepth  ? 1.0 : 0.0;        
+        }    
+    }
+    shadow /= 9.0;
+
+    return shadow;
+}
+float LampShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L, int lampIndex)
+{
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    
+    if(projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
+        return 0.0;
+
+    float currentDepth = projCoords.z;
+    float bias = max(0.005 * (1.0 - dot(N, L)), 0.001); 
+    
+    float shadow = 0.0;
+    
+    vec2 texelSize = 1.0 / textureSize(uLampShadowMap, 0).xy; 
+    
+    for(int x = -1; x <= 1; ++x)
+    {
+        for(int y = -1; y <= 1; ++y)
+        {
+            vec3 uvCoords = vec3(projCoords.xy + vec2(x, y) * texelSize, float(lampIndex));
+            
+            float pcfDepth = texture(uLampShadowMap, uvCoords).r; 
             shadow += currentDepth - bias > pcfDepth  ? 1.0 : 0.0;        
         }    
     }

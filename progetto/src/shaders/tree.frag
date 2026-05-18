@@ -6,7 +6,14 @@ in vec3 vColor;
 in vec3 vNormal;
 in vec3 vFragPos;
 in vec4 vFragPosLight;
-in vec4 vFragCarPosLight[10];
+
+layout (std140, binding = 0) uniform Matrices
+{
+	mat4 uProj;
+	mat4 uView;
+	mat4 uLightSpace;
+	mat4 uLightSpaceMatrices[30];
+};
 
 struct material_model {
     vec4  uColor;
@@ -60,14 +67,15 @@ float CarShadowCalculation(vec4 fragPosLightSpace, vec3 N, vec3 L, int carIndex)
 
 void main(void) 
 {
-    float carLinear = 100.f;
-    float carQuadratic = 150.f;
+    float carLinear = 0.22f;
+    float carQuadratic = 0.30f;
 
-    float linear = 150.f;
-    float quadratic = 300.f;
+    float linear = 0.22f;
+    float quadratic = 0.20f;
     
     vec4 texColor = texture(uTex, vTex);
     vec4 baseColor = texColor * models[indice].uColor;
+
 
     if (baseColor.a < models[indice].alpha_cutoff) {
         discard;
@@ -127,6 +135,7 @@ void main(void)
     for (int i = 0; i < 20; ++i) {
         vec3 lightVec = uCarLights[i].position - vFragPos;
         float distance = length(lightVec);
+        if (distance > 0.5) continue;
         vec3 L = lightVec / distance; 
 
         // Calcolo Spot
@@ -141,7 +150,8 @@ void main(void)
 
             int carIndex = i/2;
 
-            float shadowFactor = CarShadowCalculation(vFragCarPosLight[carIndex], N, L, carIndex);
+            vec4 fragCarPosLight = uLightSpaceMatrices[carIndex] * vec4(vFragPos, 1.0);
+            float shadowFactor = CarShadowCalculation(fragCarPosLight, N, L, carIndex);
 
             float visibility = 1.0 - shadowFactor;
 
