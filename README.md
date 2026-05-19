@@ -4,6 +4,8 @@ Corso: Computer Grafica
 Università: Università di Pisa  
 Anno Accademico: 2025/2026
 
+Il progetto è stato sviluppato in C++ usando OpenGL 4.6 e VisualStudio 2022
+
 ## Controlli
 L'applicazione supporta diverse modalità di visualizzazione. È possibile navigare liberamente la scena o impersonare uno dei "cameraman" disposti a bordo pista.
 
