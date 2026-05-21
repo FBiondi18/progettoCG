@@ -85,7 +85,7 @@ void main(void)
     if (models[indice].alpha_mode == 1 && baseColor.a < models[indice].alpha_cutoff) {
         discard;
     }
-
+    
     vec3 albedo = pow(baseColor.rgb, vec3(2.2));
 
     vec4 mrTex = texture(uMRTex, vTex);

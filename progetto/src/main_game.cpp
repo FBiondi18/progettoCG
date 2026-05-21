@@ -227,7 +227,7 @@ void render_cars_shadows(matrix_stack& stack, shader& shader, box3 car_bbox, std
 void render_cars_blending(matrix_stack& stack, shader& shader, box3 car_bbox, std::vector<renderable>& car_objects, std::vector<int>& m_idx, std::vector<int>& b_idx);
 
 // --- Matrix & Material Utilities ---
-void push_back_material(uniform_material* m, std::vector<renderable> objects, std::vector<int>& material_idx, std::vector<int>& blend_idx);
+void push_back_material(uniform_material* m, std::vector<renderable> objects, std::vector<int>& material_idx, std::vector<int>& blend_idx, int idx);
 void set_track_ubo(uniform_material* m, std::vector<int>& material_idx, int idx);
 
 int main(int argc, char** argv)
@@ -285,7 +285,7 @@ int main(int argc, char** argv)
     std::vector<renderable> car_objects;
     box3 car_bbox;
     gltfL_car.load_to_renderable("assets/modelli/car_low-poly.glb", car_objects, car_bbox);
-    push_back_material(&materials[idx], car_objects, material_idx, blend_idx);
+    push_back_material(&materials[idx], car_objects, material_idx, blend_idx, idx);
     idx += car_objects.size();
 
     gltf_loader gltfL_camera;
@@ -293,7 +293,7 @@ int main(int argc, char** argv)
     std::vector<renderable> camera_objects;
     box3 camera_bbox;
     gltfL_camera.load_to_renderable("assets/modelli/camera2.glb", camera_objects, camera_bbox);
-    push_back_material(&materials[idx], camera_objects, material_idx, blend_idx);
+    push_back_material(&materials[idx], camera_objects, material_idx, blend_idx, idx);
     idx += camera_objects.size();
 
     gltf_loader gltfL_lamp;
@@ -301,7 +301,7 @@ int main(int argc, char** argv)
     std::vector<renderable> lamp_objects;
     box3 lamp_bbox;
     gltfL_lamp.load_to_renderable("assets/modelli/low_poly_lamp.glb", lamp_objects, lamp_bbox);
-    push_back_material(&materials[idx], lamp_objects, material_idx, blend_idx);
+    push_back_material(&materials[idx], lamp_objects, material_idx, blend_idx, idx);
     idx += lamp_objects.size();
 
     set_track_ubo(&materials[idx], material_idx, idx);
@@ -312,10 +312,10 @@ int main(int argc, char** argv)
     std::vector<renderable> tree_objects;
     box3 tree_bbox;
     gltfL_tree.load_to_renderable("assets/modelli/low_poly_tree.glb", tree_objects, tree_bbox);
-    push_back_material(&materials[idx], tree_objects, material_idx, blend_idx);
+    push_back_material(&materials[idx], tree_objects, material_idx, blend_idx, idx);
     idx += tree_objects.size();
-
     printf("idx: %d\n", idx);
+	printf("material_idx size: %d\n", material_idx.size());
 
     shader model_shader;
     model_shader.create_program("shaders/basic.vert", "shaders/model.frag");
@@ -1138,7 +1138,6 @@ void render_cars_shadows(matrix_stack& stack, shader& shader, box3 car_bbox, std
             stack.push();
             stack.mult(car_objects[j].transform);
 
-            // Inviamo SOLO la matrice del modello, niente texture!
             glUniformMatrix4fv(shader["uModel"], 1, GL_FALSE, &stack.m()[0][0]);
             glDrawElements(car_objects[j]().mode, car_objects[j]().count, car_objects[j]().itype, 0);
 
@@ -1367,7 +1366,7 @@ void send_pbr_texture(shader& shader) {
 }
 
 
-void push_back_material(uniform_material* m, std::vector<renderable> objects, std::vector<int>& material_idx, std::vector<int>& blend_idx) {
+void push_back_material(uniform_material* m, std::vector<renderable> objects, std::vector<int>& material_idx, std::vector<int>& blend_idx, int idx) {
 
     for (int i = 0; i < objects.size(); i++) {
         renderable obj = objects[i];
@@ -1378,12 +1377,11 @@ void push_back_material(uniform_material* m, std::vector<renderable> objects, st
         m[i].uOcclusionStrength = obj.mater.occlusion_strength;
         if (obj.mater.alpha_mode == "BLEND") {
             m[i].alpha_mode = 2;
-            blend_idx.push_back(i);
         }
         else {
             m[i].alpha_mode = obj.mater.alpha_mode == "MASK" ? 1 : 0;
-            material_idx.push_back(i);
         }
+        material_idx.push_back(idx + i);
     }
 }
 
