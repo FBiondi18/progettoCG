@@ -1,0 +1,122 @@
+﻿  imgui_impl_glfw.cpp
+  imgui_impl_opengl3.cpp
+  imgui.cpp
+  imgui_demo.cpp
+  imgui_draw.cpp
+  imgui_tables.cpp
+  imgui_widgets.cpp
+  main_game.cpp
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(1251,24): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(1273,20): warning C4244: '=': conversione da 'float' a 'unsigned int'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(1274,20): warning C4244: '=': conversione da 'float' a 'unsigned int'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(1275,20): warning C4244: '=': conversione da 'float' a 'unsigned int'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(1473,12): warning C4244: 'inizializzazione': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(1481,12): warning C4244: 'inizializzazione': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(1523,26): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(2597,29): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(2601,29): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(2605,30): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvg.h(2609,31): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvgrast.h(334,65): warning C4244: 'argomento': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\nanosvg\src\nanosvgrast.h(334,82): warning C4244: 'argomento': conversione da 'double' a 'float'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\common\carousel\carousel_to_renderable.h(79,17): warning C4267: 'inizializzazione': conversione da 'size_t' a 'GLuint'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\common\carousel\carousel_to_renderable.h(80,17): warning C4267: 'inizializzazione': conversione da 'size_t' a 'GLuint'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\common\carousel\carousel_to_renderable.h(81,17): warning C4267: 'inizializzazione': conversione da 'size_t' a 'GLuint'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\common\carousel\carousel_to_renderable.h(82,17): warning C4267: 'inizializzazione': conversione da 'size_t' a 'GLuint'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared\minwindef.h(130,9): warning C4005: 'APIENTRY': ridefinizione macro
+  (compilazione del file di origine 'src/main_game.cpp')
+      C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glfw\include\GLFW\glfw3.h(123,11):
+      vedi la precedente definizione di 'APIENTRY'
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\tinygltf\tiny_gltf.h(3037,17): warning C4018: '>=': errata corrispondenza tra signed e unsigned
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\tinygltf\tiny_gltf.h(3132,17): warning C4018: '>=': errata corrispondenza tra signed e unsigned
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\tinygltf\tiny_gltf.h(5185,59): warning C4267: 'argomento': conversione da 'size_t' a 'int'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\common\gltf_loader.h(277,59): warning C4267: 'argomento': conversione da 'size_t' a 'int'. Possibile perdita di dati.
+  (compilazione del file di origine 'src/main_game.cpp')
+  
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(289,28): warning C4267: '+=': conversione da 'size_t' a 'unsigned int'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(297,31): warning C4267: '+=': conversione da 'size_t' a 'unsigned int'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(305,29): warning C4267: '+=': conversione da 'size_t' a 'unsigned int'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(316,29): warning C4267: '+=': conversione da 'size_t' a 'unsigned int'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(634,35): warning C4267: '+=': conversione da 'size_t' a 'int'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(636,38): warning C4267: '+=': conversione da 'size_t' a 'int'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(638,36): warning C4267: '+=': conversione da 'size_t' a 'int'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(648,36): warning C4267: '+=': conversione da 'size_t' a 'int'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(471,15): warning C4101: 'lampLightView': variabile locale senza riferimenti
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(449,12): warning C4101: 'carLightView': variabile locale senza riferimenti
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(677,19): warning C4244: 'inizializzazione': conversione da 'double' a 'float'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(678,19): warning C4244: 'inizializzazione': conversione da 'double' a 'float'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(928,61): warning C4244: 'argomento': conversione da 'double' a 'GLfloat'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(1375,35): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(1376,36): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(1377,38): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\main_game.cpp(1378,44): warning C4244: '=': conversione da 'double' a 'float'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108): warning C4244: 'argomento': conversione da 'U' a 'T'. Possibile perdita di dati.
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108): warning C4244:         with
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108): warning C4244:         [
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108): warning C4244:             U=int
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108): warning C4244:         ]
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108): warning C4244:         and
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108): warning C4244:         [
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108): warning C4244:             T=float
+C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108): warning C4244:         ]
+  (compilazione del file di origine 'src/main_game.cpp')
+      C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\3rdparty\glm\include\glm\detail\type_vec3.inl(292,108):
+      il contesto di creazione dell'istanza del modello (prima il meno recente) è
+          C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\common\simple_shapes.h(98,12):
+          vedere il riferimento all'istanza 'glm::vec<3,float,glm::packed_highp> &glm::vec<3,float,glm::packed_highp>::operator /=<_Ty>(U)' della funzione modello di cui è in corso la compilazione
+          with
+          [
+              _Ty=int,
+              U=int
+          ]
+              C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\src\common\simple_shapes.h(98,12):
+              vedere il primo riferimento a 'glm::vec<3,float,glm::packed_highp>::operator /=' in 'shape::compute_tangent_space'
+  
+  Generazione codice in corso...
+  Previous IPDB was built with incompatible compiler, fall back to full compilation.
+  All 6244 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Generazione codice terminata
+  progettoCG.vcxproj -> C:\Users\franc\Desktop\uni\Computer Grafica\progettoCG\progetto\bin\progettoCG.exe
+  "pwsh.exe" non è riconosciuto come comando interno o esterno,
+   un programma eseguibile o un file batch.
